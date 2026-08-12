@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<title>Reparatur — was ein Datenblock verkraftet</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Reed-Solomon von Grund auf: einen Datenblock zerschießen und zusehen, wie er sich repariert — und messen, wo die Garantie aufhört." />
+
+<style>
+  :root {
+    --grund:  #E8EAEE;
+    --feld:   #F4F5F8;
+    --tief:   #DADEE6;
+    --linie:  #C3C8D2;
+    --tinte:  #1A2030;
+    --leise:  #656E80;
+    --stahl:  #46506A;
+    --schaden:#C2410C;
+    --heil:   #0F766E;
+    --fokus:  #46506A;
+    --schatten: 0 1px 0 rgba(26,32,48,.05), 0 10px 24px -16px rgba(26,32,48,.45);
+
+    --f-text: -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --f-fest: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "DejaVu Sans Mono", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --grund:  #12151C;
+      --feld:   #191D26;
+      --tief:   #0C0F15;
+      --linie:  #2A303C;
+      --tinte:  #DCE0E8;
+      --leise:  #838C9E;
+      --stahl:  #8E99B5;
+      --schaden:#F0764A;
+      --heil:   #3FB3A6;
+      --fokus:  #8E99B5;
+      --schatten: 0 1px 0 rgba(255,255,255,.03), 0 12px 30px -18px #000;
+    }
+  }
+  :root[data-theme="dark"] {
+    --grund:  #12151C;
+    --feld:   #191D26;
+    --tief:   #0C0F15;
+    --linie:  #2A303C;
+    --tinte:  #DCE0E8;
+    --leise:  #838C9E;
+    --stahl:  #8E99B5;
+    --schaden:#F0764A;
+    --heil:   #3FB3A6;
+    --fokus:  #8E99B5;
+    --schatten: 0 1px 0 rgba(255,255,255,.03), 0 12px 30px -18px #000;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--grund); color: var(--tinte);
+    font-family: var(--f-text); font-size: 15px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .blatt {
+    max-width: 1120px; margin: 0 auto;
+    padding: clamp(20px, 4vw, 44px) clamp(14px, 3vw, 28px) 64px;
+    display: flex; flex-direction: column; gap: 22px;
+  }
+
+  header.kopf { display: flex; flex-direction: column; gap: 10px; }
+  .marke {
+    font-family: var(--f-fest); font-size: 10px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--leise);
+    display: flex; gap: 12px; align-items: center; margin: 0;
+  }
+  .marke::after { content: ""; flex: 1; height: 1px; background: var(--linie); }
+  h1 {
+    font-family: var(--f-fest); font-weight: 700;
+    font-size: clamp(25px, 4.4vw, 42px); line-height: 1.06;
+    letter-spacing: -.03em; margin: 0; text-wrap: balance;
+  }
+  h1 span { color: var(--heil); }
+  .vorspann { max-width: 68ch; color: var(--leise); margin: 0; }
+  .vorspann b { color: var(--tinte); font-weight: 600; }
+
+  .leiste {
+    display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+    background: var(--feld); border: 1px solid var(--linie);
+    padding: 10px 12px; box-shadow: var(--schatten);
+  }
+  .kl {
+    font-family: var(--f-fest); font-size: 10px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--leise);
+  }
+  button, select {
+    font-family: var(--f-fest); font-size: 12px; color: var(--tinte);
+    background: var(--grund); border: 1px solid var(--linie); border-radius: 0;
+    padding: 7px 11px; cursor: pointer; letter-spacing: .03em;
+  }
+  button:hover, select:hover { border-color: var(--stahl); }
+  button:active { background: var(--tief); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.tat { background: var(--schaden); border-color: var(--schaden); color: var(--feld); }
+  button.heilen { background: var(--heil); border-color: var(--heil); color: var(--feld); }
+  button.tat:hover, button.heilen:hover { filter: brightness(1.1); }
+  button[aria-pressed="true"] { background: var(--stahl); border-color: var(--stahl); color: var(--feld); }
+  :focus-visible { outline: 2px solid var(--fokus); outline-offset: 2px; }
+
+  .werte {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+    gap: 1px; background: var(--linie); border: 1px solid var(--linie);
+  }
+  .wert { background: var(--feld); padding: 9px 11px; display: flex; flex-direction: column; gap: 1px; }
+  .wert dt {
+    font-family: var(--f-fest); font-size: 9px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--leise); margin: 0;
+  }
+  .wert dd {
+    margin: 0; font-family: var(--f-fest); font-size: 16px;
+    font-variant-numeric: tabular-nums; letter-spacing: -.02em; overflow-wrap: anywhere;
+  }
+  .wert dd.heil { color: var(--heil); }
+  .wert dd.schlimm { color: var(--schaden); }
+  .wert dd small { font-size: 11px; color: var(--leise); }
+
+  .platte {
+    background: var(--feld); border: 1px solid var(--linie); box-shadow: var(--schatten);
+  }
+  .platte-kopf {
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+    padding: 9px 12px; border-bottom: 1px solid var(--linie);
+  }
+  .legende { display: flex; gap: 14px; margin-left: auto; flex-wrap: wrap; }
+  .legende span {
+    font-family: var(--f-fest); font-size: 9px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--leise);
+    display: flex; align-items: center; gap: 5px;
+  }
+  .legende i { width: 10px; height: 10px; display: inline-block; border: 1px solid var(--linie); }
+
+  /* auto-fill statt fester Spaltenzahl: die Zellen bleiben klein genug, dass
+     das Ganze als Block liest und nicht als Tabelle */
+  #block {
+    display: grid; gap: 2px; padding: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(26px, 1fr));
+  }
+  .zelle {
+    aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+    font-family: var(--f-fest); font-size: 11px; line-height: 1;
+    background: var(--grund); border: 1px solid transparent; cursor: crosshair;
+    color: var(--tinte); user-select: none; overflow: hidden;
+  }
+  .zelle.par { background: var(--tief); color: var(--leise); }
+  .zelle.kaputt { background: var(--schaden); color: var(--feld); border-color: var(--schaden); }
+  .zelle.ausfall { border-color: var(--schaden); border-style: dashed; color: var(--schaden); }
+  .zelle.frisch { background: var(--heil); color: var(--feld); border-color: var(--heil); }
+  .zelle:hover { border-color: var(--stahl); }
+
+  .zwei { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 22px; }
+  .kasten {
+    background: var(--feld); border: 1px solid var(--linie); box-shadow: var(--schatten);
+    padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .kasten h2 {
+    font-family: var(--f-fest); font-size: 10px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--leise); margin: 0;
+    padding-bottom: 7px; border-bottom: 1px solid var(--linie); font-weight: 500;
+  }
+  table.tab { width: 100%; border-collapse: collapse; font-family: var(--f-fest); font-size: 12px; font-variant-numeric: tabular-nums; }
+  table.tab th, table.tab td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--linie); text-align: left; }
+  table.tab th { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--leise); font-weight: 500; }
+  table.tab td.z { text-align: right; }
+  table.tab td.heil { color: var(--heil); }
+  table.tab td.schlimm { color: var(--schaden); }
+  .fortschritt { height: 4px; background: var(--tief); overflow: hidden; }
+  .fortschritt i { display: block; height: 100%; background: var(--stahl); width: 0; }
+
+  .noten {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 26px; border-top: 1px solid var(--linie); padding-top: 22px;
+  }
+  .noten section { display: flex; flex-direction: column; gap: 7px; }
+  .noten h3 { font-family: var(--f-fest); font-size: 14px; margin: 0; letter-spacing: -.01em; }
+  .noten p { margin: 0; color: var(--leise); font-size: 14px; max-width: 52ch; }
+  .noten b { color: var(--tinte); font-weight: 600; }
+  code { font-family: var(--f-fest); font-size: .9em; background: var(--tief); padding: 1px 4px; color: var(--tinte); }
+
+  footer {
+    border-top: 1px solid var(--linie); padding-top: 16px;
+    font-family: var(--f-fest); font-size: 10px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--leise);
+  }
+</style>
+</head>
+<body>
+
+<div class="blatt">
+
+  <header class="kopf">
+    <p class="marke">Reed-Solomon über GF(256) · von Grund auf · gemessen</p>
+    <h1>Reparatur: was ein Datenblock <span>verkraftet</span></h1>
+    <p class="vorspann">
+      Kompression entfernt Redundanz. Fehlerkorrektur fügt sie absichtlich wieder hinzu —
+      und zwar so, dass beschädigte Stellen sich nicht nur bemerken, sondern <b>zurückrechnen</b>
+      lassen. Hier steht der Block offen da: Bytes anklicken zerstört sie, ein Druck auf
+      Reparieren holt sie zurück. Interessant wird es an der Grenze: was passiert bei einem
+      Fehler zu viel?
+    </p>
+  </header>
+
+  <div class="leiste">
+    <span class="kl">Code</span>
+    <select id="code">
+      <option value="255,223">RS(255,223) · 32 Parität · t=16</option>
+      <option value="127,107">RS(127,107) · 20 Parität · t=10</option>
+      <option value="63,51" selected>RS(63,51) · 12 Parität · t=6</option>
+      <option value="31,23">RS(31,23) · 8 Parität · t=4</option>
+      <option value="15,11">RS(15,11) · 4 Parität · t=2</option>
+    </select>
+    <span class="kl">Werkzeug</span>
+    <button id="w-fehler" aria-pressed="true">Fehler</button>
+    <button id="w-ausfall" aria-pressed="false">Ausfall</button>
+    <button id="b-zerstoere" class="tat">Zufällig zerschießen</button>
+    <button id="b-repariere" class="heilen">Reparieren</button>
+    <button id="b-neu">Neuer Block</button>
+    <span class="kl" id="lage" style="margin-left:auto">unversehrt</span>
+  </div>
+
+  <dl class="werte">
+    <div class="wert"><dt>Block</dt><dd id="w-n">—</dd></div>
+    <div class="wert"><dt>Nutzdaten</dt><dd id="w-k">—</dd></div>
+    <div class="wert"><dt>Parität</dt><dd id="w-p">—</dd></div>
+    <div class="wert"><dt>Trägt Fehler</dt><dd id="w-t">—</dd></div>
+    <div class="wert"><dt>oder Ausfälle</dt><dd id="w-2t">—</dd></div>
+    <div class="wert"><dt>Beschädigt</dt><dd id="w-schaden">0</dd></div>
+    <div class="wert"><dt>Befund</dt><dd id="w-befund">—</dd></div>
+  </dl>
+
+  <div class="platte">
+    <div class="platte-kopf">
+      <span class="kl">Blockbild</span>
+      <span class="kl" id="hinweis">Ein Byte anklicken zerstört es · Umschalt hält gedrückt zum Malen</span>
+      <span class="legende">
+        <span><i style="background:var(--grund)"></i>Daten</span>
+        <span><i style="background:var(--tief)"></i>Parität</span>
+        <span><i style="background:var(--schaden)"></i>Fehler</span>
+        <span><i style="border-style:dashed;border-color:var(--schaden)"></i>Ausfall</span>
+        <span><i style="background:var(--heil)"></i>gerade repariert</span>
+      </span>
+    </div>
+    <div id="block"></div>
+  </div>
+
+  <div class="zwei">
+    <div class="kasten">
+      <h2>Wo die Garantie aufhört</h2>
+      <p style="margin:0;color:var(--leise);font-size:14px">
+        Bis <b style="color:var(--tinte)">t</b> Fehler ist die Reparatur garantiert. Darüber
+        gibt der Decoder normalerweise auf — aber nicht immer: manchmal landet das kaputte
+        Wort zufällig nahe genug an einem <i>anderen</i> gültigen Codewort und wird
+        selbstbewusst falsch repariert. Dieser Versuch misst, wie oft.
+      </p>
+      <div class="leiste" style="box-shadow:none;border:0;padding:0;background:transparent">
+        <span class="kl">Versuche</span>
+        <select id="v-anzahl">
+          <option value="2000">2 000</option>
+          <option value="10000" selected>10 000</option>
+          <option value="40000">40 000</option>
+        </select>
+        <button id="b-versuch" class="heilen" style="margin-left:auto">Grenze austesten</button>
+      </div>
+      <div class="fortschritt"><i id="v-balken"></i></div>
+      <table class="tab" id="v-tabelle">
+        <thead><tr><th>Fehler</th><th class="z">repariert</th><th class="z">erkannt</th><th class="z">still falsch</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="kl" id="v-fuss">noch nicht gemessen</p>
+    </div>
+
+    <div class="kasten">
+      <h2>Nutzdaten im Block</h2>
+      <p id="klartext" style="margin:0;font-family:var(--f-fest);font-size:12.5px;line-height:1.7;
+         white-space:pre-wrap;word-break:break-word;max-height:280px;overflow:auto"></p>
+      <p class="kl" id="klar-fuss">—</p>
+    </div>
+  </div>
+
+  <div class="noten">
+    <section>
+      <h3>Wie repariert wird</h3>
+      <p>
+        Aus dem empfangenen Block werden <b>Syndrome</b> berechnet — sind alle null, ist er
+        heil. Sonst findet <b>Berlekamp-Massey</b> das Fehlerstellen-Polynom, die
+        <b>Chien-Suche</b> dessen Nullstellen (also die Orte), und <b>Forney</b> die
+        Größe jedes Fehlers. Danach werden die Syndrome erneut geprüft; erst dann gilt
+        die Reparatur als gelungen.
+      </p>
+    </section>
+    <section>
+      <h3>Fehler kostet doppelt</h3>
+      <p>
+        Ein <b>Fehler</b> verbraucht zwei Paritätsbytes: eines, um den Ort zu finden, eines
+        für den Wert. Ein <b>Ausfall</b> — eine Stelle, von der man schon weiß, dass sie hin
+        ist — kostet nur eines. Deshalb schafft derselbe Block doppelt so viele Ausfälle
+        wie Fehler. Wer weiß, wo es weh tut, kommt billiger davon.
+      </p>
+    </section>
+    <section>
+      <h3>Der stille Irrtum</h3>
+      <p>
+        Jenseits von t gibt es drei Ausgänge, nicht zwei: repariert, ehrlich gescheitert —
+        oder <b>still falsch</b>. Gemessen an kurzen Codes tritt Letzteres durchaus auf,
+        etwa 0,1 % bei RS(15,11). Mit jedem Paritätsbyte bricht die Rate ein; bei
+        RS(255,223) taucht in Zehntausenden Versuchen kein einziger Fall auf.
+      </p>
+    </section>
+    <section>
+      <h3>Selber nachrechnen</h3>
+      <p>
+        Der ganze Codec steht in dieser Datei: GF(256) mit dem Primpolynom <code>0x11D</code>,
+        systematische Codierung, Fehler und Ausfälle gemeinsam. Nichts wird nachgeladen,
+        nichts verlässt den Browser. Die Zahlen im Versuch entstehen live auf diesem Gerät.
+      </p>
+    </section>
+  </div>
+
+  <footer>Reparatur · Reed-Solomon über GF(2⁸) · Berlekamp-Massey, Chien, Forney · Syndromprüfung nach jeder Korrektur</footer>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ===================== GF(256) und Polynome ===================== */
+  const PRIM = 0x11D;
+  const EXP = new Uint8Array(512), LOG = new Uint8Array(256);
+  (function () { let x = 1;
+    for (let i = 0; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 0x100) x ^= PRIM; }
+    for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255]; })();
+
+  const mul = (a, b) => (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]];
+  const inv = (a) => EXP[(255 - LOG[a]) % 255];
+  const dv  = (a, b) => a === 0 ? 0 : EXP[(LOG[a] + 255 - LOG[b]) % 255];
+  const alpha = (i) => EXP[((i % 255) + 255) % 255];
+
+  // Polynome durchgehend aufsteigend: p[0] ist der konstante Term.
+  function pmul(a, b) {
+    const r = new Uint8Array(a.length + b.length - 1);
+    for (let i = 0; i < a.length; i++) if (a[i]) for (let j = 0; j < b.length; j++) if (b[j]) r[i + j] ^= mul(a[i], b[j]);
+    return r;
+  }
+  const peval = (p, x) => { let y = 0; for (let i = p.length - 1; i >= 0; i--) y = mul(y, x) ^ p[i]; return y; };
+
+  function generator(nsym) {
+    let g = Uint8Array.from([1]);
+    for (let i = 1; i <= nsym; i++) g = pmul(g, Uint8Array.from([alpha(i), 1]));
+    return g;
+  }
+
+  function encode(data, nsym) {
+    const out = new Uint8Array(data.length + nsym);
+    const gDesc = Uint8Array.from(generator(nsym)).reverse();
+    out.set(data);
+    for (let i = 0; i < data.length; i++) {
+      const c = out[i];
+      if (c) for (let j = 1; j < gDesc.length; j++) out[i + j] ^= mul(gDesc[j], c);
+    }
+    out.set(data);
+    return out;
+  }
+
+  function syndromes(c, nsym) {
+    const asc = Uint8Array.from(c).reverse();
+    const s = new Uint8Array(nsym);
+    for (let j = 0; j < nsym; j++) s[j] = peval(asc, alpha(j + 1));
+    return s;
+  }
+
+  function bm(S, anzahl) {
+    let C = Uint8Array.from([1]), B = Uint8Array.from([1]);
+    let L = 0, m = 1, b = 1;
+    for (let n = 0; n < anzahl; n++) {
+      let d = S[n];
+      for (let i = 1; i <= L && i < C.length; i++) d ^= mul(C[i], S[n - i]);
+      if (d === 0) { m++; continue; }
+      const T = Uint8Array.from(C);
+      const skal = dv(d, b);
+      const neu = new Uint8Array(Math.max(C.length, B.length + m));
+      neu.set(C);
+      for (let i = 0; i < B.length; i++) neu[i + m] ^= mul(skal, B[i]);
+      if (2 * L <= n) { C = neu; L = n + 1 - L; B = T; b = d; m = 1; }
+      else { C = neu; m++; }
+    }
+    let e = C.length; while (e > 1 && C[e - 1] === 0) e--;
+    return C.slice(0, e);
+  }
+
+  const chien = (lam, n) => {
+    const pos = [];
+    for (let i = 0; i < n; i++) if (peval(lam, alpha(-i)) === 0) pos.push(n - 1 - i);
+    return pos;
+  };
+
+  function forney(recv, S, lam, pos, n, nsym) {
+    const om = pmul(Uint8Array.from(S), lam).slice(0, nsym);
+    const abl = new Uint8Array(Math.max(1, lam.length - 1));
+    for (let i = 1; i < lam.length; i += 2) abl[i - 1] = lam[i];   // in Charakteristik 2
+    const out = Uint8Array.from(recv);
+    for (const p of pos) {
+      const X = alpha(n - 1 - p), Xi = inv(X);
+      const nenner = peval(abl, Xi);
+      if (nenner === 0) return null;
+      out[p] ^= dv(peval(om, Xi), nenner);
+    }
+    return out;
+  }
+
+  function decode(recv, nsym, erasePos) {
+    const n = recv.length;
+    const S = syndromes(recv, nsym);
+    if (S.every((v) => v === 0)) return { out: Uint8Array.from(recv), pos: [], sauber: true };
+
+    const era = erasePos ? [...erasePos] : [];
+    let lamE = Uint8Array.from([1]);
+    for (const p of era) lamE = pmul(lamE, Uint8Array.from([1, alpha(n - 1 - p)]));
+
+    // Forney-Syndrome, und BM läuft darauf ab Index e — ohne die Verschiebung
+    // hält BM die von den bekannten Ausfällen erzeugten Terme für echte Fehler.
+    const Xi = pmul(Uint8Array.from(S), lamE).slice(0, nsym);
+    const lamErr = bm(Xi.slice(era.length), nsym - era.length);
+    const lam = pmul(lamE, lamErr);
+
+    const grad = lam.length - 1;
+    if (grad > nsym) return null;
+    const pos = chien(lam, n);
+    if (pos.length !== grad) return null;
+    const out = forney(recv, S, lam, pos, n, nsym);
+    if (!out) return null;
+    if (!syndromes(out, nsym).every((v) => v === 0)) return null;   // Selbstkontrolle
+    return { out, pos, sauber: false };
+  }
+
+  /* ========================== Zustand ========================== */
+  const $ = (id) => document.getElementById(id);
+  const nf = new Intl.NumberFormat("de-DE");
+
+  const TEXT =
+    "Ein Datenblock ist kein Gedächtnis, sondern ein Versprechen: dass sich aus dem, was " +
+    "ankommt, wiederherstellen lässt, was losgeschickt wurde. Das Versprechen hat eine " +
+    "Zahl. Bis dahin gilt es unbedingt, darüber hinaus gar nicht — und in dem schmalen " +
+    "Streifen dazwischen liegt der interessante Teil. Wer wissen will, wie belastbar eine " +
+    "Zusicherung ist, muss sie überschreiten und nachsehen, was dann passiert. ";
+
+  const S = { n: 63, k: 51, code: null, recv: null, kaputt: new Set(), ausfall: new Set(), werkzeug: "fehler" };
+
+  function neuerBlock() {
+    const nsym = S.n - S.k;
+    const data = new Uint8Array(S.k);
+    for (let i = 0; i < S.k; i++) data[i] = TEXT.charCodeAt(i % TEXT.length) & 0xFF;
+    S.code = encode(data, nsym);
+    S.recv = Uint8Array.from(S.code);
+    S.kaputt.clear(); S.ausfall.clear();
+    zeichne(); werte(); $("lage").textContent = "unversehrt";
+    $("w-befund").textContent = "—"; $("w-befund").className = "";
+  }
+
+  const zeichenVon = (b) => (b >= 32 && b < 127) ? String.fromCharCode(b) : (b === 10 ? "¶" : "·");
+
+  function zeichne() {
+    const host = $("block");
+    host.textContent = "";
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < S.n; i++) {
+      const d = document.createElement("div");
+      d.className = "zelle" + (i >= S.k ? " par" : "") +
+        (S.kaputt.has(i) ? " kaputt" : "") + (S.ausfall.has(i) ? " ausfall" : "");
+      d.textContent = zeichenVon(S.recv[i]);
+      d.dataset.i = String(i);
+      d.title = "Byte " + i + (i >= S.k ? " (Parität)" : "") + " · 0x" + S.recv[i].toString(16).padStart(2, "0");
+      frag.append(d);
+    }
+    host.append(frag);
+    klartext();
+  }
+
+  function klartext() {
+    let s = "";
+    for (let i = 0; i < S.k; i++) s += zeichenVon(S.recv[i]);
+    $("klartext").textContent = s;
+    const kaputtInDaten = [...S.kaputt, ...S.ausfall].filter((i) => i < S.k).length;
+    $("klar-fuss").textContent = kaputtInDaten
+      ? kaputtInDaten + " von " + S.k + " Nutzbytes verfälscht"
+      : S.k + " Nutzbytes, unverfälscht";
+  }
+
+  function werte() {
+    const nsym = S.n - S.k, t = nsym >> 1;
+    $("w-n").innerHTML = S.n + " <small>Byte</small>";
+    $("w-k").innerHTML = S.k + " <small>Byte</small>";
+    $("w-p").innerHTML = nsym + " <small>Byte</small>";
+    $("w-t").textContent = t;
+    $("w-2t").textContent = nsym;
+    const f = S.kaputt.size, a = S.ausfall.size;
+    const el = $("w-schaden");
+    el.innerHTML = f + (a ? " <small>+ " + a + " Ausf.</small>" : "");
+    const kosten = 2 * f + a;
+    el.className = kosten > nsym ? "schlimm" : (kosten ? "" : "");
+  }
+
+  /* ========================= Beschädigen ======================== */
+  function trifft(i, werkzeug) {
+    if (werkzeug === "ausfall") {
+      if (S.ausfall.has(i)) { S.ausfall.delete(i); S.recv[i] = S.code[i]; }
+      else { S.ausfall.add(i); S.kaputt.delete(i); let v; do { v = (Math.random() * 256) | 0; } while (v === S.recv[i]); S.recv[i] = v; }
+    } else {
+      if (S.kaputt.has(i)) { S.kaputt.delete(i); S.recv[i] = S.code[i]; }
+      else { S.kaputt.add(i); S.ausfall.delete(i); let v; do { v = (Math.random() * 256) | 0; } while (v === S.recv[i]); S.recv[i] = v; }
+    }
+  }
+
+  $("block").addEventListener("pointerdown", (e) => {
+    const z = e.target.closest(".zelle"); if (!z) return;
+    trifft(+z.dataset.i, e.shiftKey ? (S.werkzeug === "fehler" ? "ausfall" : "fehler") : S.werkzeug);
+    zeichne(); werte(); $("lage").textContent = "beschädigt";
+    $("w-befund").textContent = "—"; $("w-befund").className = "";
+  });
+
+  $("b-zerstoere").addEventListener("click", () => {
+    const nsym = S.n - S.k, t = nsym >> 1;
+    const wieviel = S.werkzeug === "ausfall" ? nsym : t;
+    const frei = [...Array(S.n).keys()].filter((i) => !S.kaputt.has(i) && !S.ausfall.has(i));
+    for (let i = frei.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [frei[i], frei[j]] = [frei[j], frei[i]]; }
+    for (const p of frei.slice(0, wieviel)) trifft(p, S.werkzeug);
+    zeichne(); werte();
+    $("lage").textContent = wieviel + (S.werkzeug === "ausfall" ? " Ausfälle" : " Fehler") + " gesetzt — also genau an der Grenze";
+    $("w-befund").textContent = "—"; $("w-befund").className = "";
+  });
+
+  $("b-repariere").addEventListener("click", () => {
+    const nsym = S.n - S.k;
+    const era = [...S.ausfall];
+    let res = null;
+    try { res = decode(S.recv, nsym, era.length ? era : null); } catch (err) { res = null; }
+    const bef = $("w-befund");
+    if (!res) {
+      bef.textContent = "zu viel"; bef.className = "schlimm";
+      $("lage").textContent = "Decoder gibt auf — der Schaden übersteigt, was die Parität trägt";
+      return;
+    }
+    let gleich = true;
+    for (let i = 0; i < S.n; i++) if (res.out[i] !== S.code[i]) { gleich = false; break; }
+    const geheilt = new Set(res.pos);
+    S.recv = res.out; S.kaputt.clear(); S.ausfall.clear();
+    zeichne(); werte();
+    for (const p of geheilt) { const z = $("block").children[p]; if (z) z.classList.add("frisch"); }
+    setTimeout(() => document.querySelectorAll(".zelle.frisch").forEach((z) => z.classList.remove("frisch")), 900);
+    if (gleich) {
+      bef.textContent = "repariert"; bef.className = "heil";
+      $("lage").textContent = res.pos.length + " Stellen zurückgerechnet, Syndrome wieder null";
+    } else {
+      bef.textContent = "STILL FALSCH"; bef.className = "schlimm";
+      $("lage").textContent = "Decoder meldet Erfolg, liefert aber ein anderes Codewort — genau der stille Irrtum";
+    }
+  });
+
+  $("b-neu").addEventListener("click", neuerBlock);
+
+  const setWerkzeug = (w) => {
+    S.werkzeug = w;
+    $("w-fehler").setAttribute("aria-pressed", String(w === "fehler"));
+    $("w-ausfall").setAttribute("aria-pressed", String(w === "ausfall"));
+    $("b-zerstoere").textContent = w === "ausfall" ? "Zufällig ausfallen lassen" : "Zufällig zerschießen";
+  };
+  $("w-fehler").addEventListener("click", () => setWerkzeug("fehler"));
+  $("w-ausfall").addEventListener("click", () => setWerkzeug("ausfall"));
+
+  $("code").addEventListener("change", (e) => {
+    const [n, k] = e.target.value.split(",").map(Number);
+    S.n = n; S.k = k; neuerBlock();
+    $("v-tabelle").querySelector("tbody").textContent = "";
+    $("v-fuss").textContent = "noch nicht gemessen";
+    $("v-balken").style.width = "0";
+  });
+
+  /* ====================== Grenzversuch ========================= */
+  let laeuft = false;
+  async function grenze() {
+    if (laeuft) return;
+    laeuft = true;
+    $("b-versuch").disabled = true;
+    const anzahl = +$("v-anzahl").value;
+    const nsym = S.n - S.k, t = nsym >> 1, k = S.k, n = S.n;
+    const tb = $("v-tabelle").querySelector("tbody");
+    tb.textContent = "";
+    const stufen = [t, t + 1, t + 2];
+    let still = 0;
+
+    for (let si = 0; si < stufen.length; si++) {
+      const f = stufen[si];
+      const z = { rep: 0, erk: 0, still: 0 };
+      for (let v = 0; v < anzahl; v++) {
+        const data = new Uint8Array(k);
+        for (let i = 0; i < k; i++) data[i] = (Math.random() * 256) | 0;
+        const code = encode(data, nsym);
+        const recv = Uint8Array.from(code);
+        const frei = [...Array(n).keys()];
+        for (let i = frei.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [frei[i], frei[j]] = [frei[j], frei[i]]; }
+        for (const p of frei.slice(0, f)) { let x; do { x = (Math.random() * 256) | 0; } while (x === recv[p]); recv[p] = x; }
+        let res = null;
+        try { res = decode(recv, nsym, null); } catch (e) { res = null; }
+        if (!res) { z.erk++; continue; }
+        let gleich = true;
+        for (let i = 0; i < n; i++) if (res.out[i] !== code[i]) { gleich = false; break; }
+        if (gleich) z.rep++; else z.still++;
+        if ((v & 255) === 0) {
+          $("v-balken").style.width = (100 * (si * anzahl + v) / (stufen.length * anzahl)).toFixed(1) + "%";
+          await new Promise((r) => setTimeout(r, 0));
+        }
+      }
+      still += z.still;
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + f + (f === t ? " (= t)" : "") + "</td>" +
+        "<td class='z heil'>" + nf.format(z.rep) + "</td>" +
+        "<td class='z'>" + nf.format(z.erk) + "</td>" +
+        "<td class='z " + (z.still ? "schlimm" : "") + "'>" + nf.format(z.still) +
+        (z.still ? " <small>" + (100 * z.still / anzahl).toFixed(3) + " %</small>" : "") + "</td>";
+      tb.append(tr);
+    }
+    $("v-balken").style.width = "100%";
+    $("v-fuss").textContent = still
+      ? still + " stille Irrtümer bei " + nf.format(anzahl * 3) + " Versuchen — bei kurzen Codes ist die Grenze weich"
+      : "kein stiller Irrtum in " + nf.format(anzahl * 3) + " Versuchen — mit dieser Parität ist die Grenze hart";
+    $("b-versuch").disabled = false;
+    laeuft = false;
+  }
+  $("b-versuch").addEventListener("click", grenze);
+
+  // Beim Neuladen stellt der Browser die zuletzt gewählte Option wieder her. Der
+  // Zustand muss vom Auswahlfeld gelesen werden, sonst rechnet die Seite mit einem
+  // anderen Code als sie anzeigt.
+  setWerkzeug("fehler");
+  const [n0, k0] = $("code").value.split(",").map(Number);
+  S.n = n0; S.k = k0;
+  neuerBlock();
+})();
+</script>
+</body>
+</html>
