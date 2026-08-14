@@ -86,6 +86,11 @@ entspricht dem Exponenten `n-1-p`.
 
 [MIT](LICENSE)
 
-Verwandt: [Redundanz](https://github.com/ssims437/redundanz) — dieselbe Größe mit
-umgekehrtem Vorzeichen: Kompression entfernt, was Fehlerkorrektur absichtlich hinzufügt.
-Und [Plotterblätter](https://github.com/ssims437/plotterblaetter).
+[Redundanz](https://github.com/ssims437/redundanz) ist dieselbe Größe mit umgekehrtem
+Vorzeichen: Kompression entfernt, was Fehlerkorrektur absichtlich hinzufügt.
+
+Verwandt: [Plotterblätter](https://github.com/ssims437/plotterblaetter) ·
+[Redundanz](https://github.com/ssims437/redundanz) ·
+[Würfel](https://github.com/ssims437/wuerfel) ·
+[Rechenwerk](https://github.com/ssims437/rechenwerk) ·
+[Nachkomma](https://github.com/ssims437/nachkomma)
