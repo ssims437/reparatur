@@ -89,4 +89,4 @@ entspricht dem Exponenten `n-1-p`.
 [Redundanz](https://github.com/ssims437/redundanz) ist dieselbe Größe mit umgekehrtem
 Vorzeichen: Kompression entfernt, was Fehlerkorrektur absichtlich hinzufügt.
 
-Alle fünfzehn Blätter, nach Feld geordnet: **[ssims437.github.io](https://ssims437.github.io/)**
+Alle Blätter nach Feld geordnet: **[ssims437.github.io](https://ssims437.github.io/)**
