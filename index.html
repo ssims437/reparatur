@@ -13,11 +13,11 @@
     --tief:   #DADEE6;
     --linie:  #C3C8D2;
     --tinte:  #1A2030;
-    --leise:  #656E80;
+    --leise:  #596171;
     --stahl:  #46506A;
     --schaden:#C2410C;
     --heil:   #0F766E;
-    --fokus:  #46506A;
+    --merk:  #46506A;
     --schatten: 0 1px 0 rgba(26,32,48,.05), 0 10px 24px -16px rgba(26,32,48,.45);
 
     --f-text: -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -35,7 +35,7 @@
       --stahl:  #8E99B5;
       --schaden:#F0764A;
       --heil:   #3FB3A6;
-      --fokus:  #8E99B5;
+      --merk:  #8E99B5;
       --schatten: 0 1px 0 rgba(255,255,255,.03), 0 12px 30px -18px #000;
     }
   }
@@ -49,7 +49,7 @@
     --stahl:  #8E99B5;
     --schaden:#F0764A;
     --heil:   #3FB3A6;
-    --fokus:  #8E99B5;
+    --merk:  #8E99B5;
     --schatten: 0 1px 0 rgba(255,255,255,.03), 0 12px 30px -18px #000;
   }
 
@@ -66,15 +66,13 @@
   }
 
   header.kopf { display: flex; flex-direction: column; gap: 10px; }
-  .marke {
-    font-family: var(--f-fest); font-size: 10px; letter-spacing: .2em;
-    text-transform: uppercase; color: var(--leise);
-    display: flex; gap: 12px; align-items: center; margin: 0;
-  }
+  .marke { font-family:var(--f-fest); font-size:10px; letter-spacing:.2em; text-transform:uppercase;
+    color:var(--leise); display:flex; gap:12px; align-items:center; margin:0; }
+  .marke::after { content:""; flex:1; height:1px; background:var(--linie); }
   .marke::after { content: ""; flex: 1; height: 1px; background: var(--linie); }
   h1 {
     font-family: var(--f-fest); font-weight: 700;
-    font-size: clamp(25px, 4.4vw, 42px); line-height: 1.06;
+    font-size: clamp(24px,4.2vw,40px); line-height: 1.06;
     letter-spacing: -.03em; margin: 0; text-wrap: balance;
   }
   h1 span { color: var(--heil); }
@@ -102,7 +100,7 @@
   button.heilen { background: var(--heil); border-color: var(--heil); color: var(--feld); }
   button.tat:hover, button.heilen:hover { filter: brightness(1.1); }
   button[aria-pressed="true"] { background: var(--stahl); border-color: var(--stahl); color: var(--feld); }
-  :focus-visible { outline: 2px solid var(--fokus); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--merk); outline-offset: 2px; }
 
   .werte {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
@@ -193,6 +191,16 @@
   @media (min-width: 1500px) { .blatt { max-width: 1360px; } }
   @media (min-width: 1800px) { .blatt { max-width: 1560px; } }
   @media (min-width: 2200px) { .blatt { max-width: 1800px; } }
+
+  /* PFLEGE: schmalschirm */
+  @media (max-width: 700px) {
+    table { display: block; max-width: 100%; overflow-x: auto; }
+    select, input[type=text], input[type=number], input[type=search] { max-width: 100%; }
+  }
+
+  /* PFLEGE: klickflaechen */
+  button, select { min-height: 34px; }
+  input[type=range] { height: 26px; }
 </style>
 </head>
 <body>
@@ -200,7 +208,7 @@
 <div class="blatt">
 
   <header class="kopf">
-    <p class="marke">Reed-Solomon über GF(256) · von Grund auf · gemessen</p>
+    <p class="marke">Blatt · Daten</p>
     <h1>Reparatur: was ein Datenblock <span>verkraftet</span></h1>
     <p class="vorspann">
       Kompression entfernt Redundanz. Fehlerkorrektur fügt sie absichtlich wieder hinzu —
@@ -227,7 +235,10 @@
     <button id="b-repariere" class="heilen">Reparieren</button>
     <button id="b-neu">Neuer Block</button>
     <span class="kl" id="lage" style="margin-left:auto">unversehrt</span>
-  </div>
+  
+      <span style="flex:1"></span>
+      <button id="b-thema">Ansicht</button>
+    </div>
 
   <dl class="werte">
     <div class="wert"><dt>Block</dt><dd id="w-n">—</dd></div>
@@ -676,6 +687,31 @@
   const [n0, k0] = $("code").value.split(",").map(Number);
   S.n = n0; S.k = k0;
   neuerBlock();
+
+  /* PFLEGE: ansicht — dieselbe Bedienung wie in den übrigen Blättern: erst die
+     Systemvorgabe, ein Druck stellt bewusst um. Gezeichnet wird danach neu,
+     weil Farben aus dem Stilblatt im Bild nicht von selbst nachziehen. */
+  (function () {
+    const knopf = document.getElementById("b-thema");
+    if (!knopf) return;
+    knopf.addEventListener("click", () => {
+      const jetzt = document.documentElement.getAttribute("data-theme");
+      const dunkel = matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.setAttribute("data-theme",
+        jetzt ? (jetzt === "dark" ? "light" : "dark") : (dunkel ? "light" : "dark"));
+      const male = [];
+      if (typeof refreshTheme === "function") male.push(refreshTheme);
+      if (typeof neuFarben === "function") male.push(neuFarben);
+      if (typeof zeichnen === "function") male.push(zeichnen);
+      if (typeof zeichne === "function") male.push(zeichne);
+      if (typeof draw === "function") male.push(draw);
+      if (typeof render === "function") male.push(render);
+      if (typeof lauf === "function") male.push(lauf);
+      if (typeof neu === "function") male.push(neu);
+      for (const f of male) { try { f(); } catch (e) { void e; } }
+    });
+  })();
+
 })();
 </script>
 </body>
